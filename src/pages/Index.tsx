@@ -46,8 +46,8 @@ const getTriad = (id: number): number[] | null =>
 const getTetrad = (id: number): number[] | null =>
   TETRADS.find((t) => t.includes(id)) ?? null;
 
-const COLS = 4;
-const ROWS = 8;
+const COLS = 5;
+const ROWS = 5;
 const CELL_SIZE = 72;
 const GAP = 5;
 const BOARD_W = COLS * CELL_SIZE + (COLS - 1) * GAP;
