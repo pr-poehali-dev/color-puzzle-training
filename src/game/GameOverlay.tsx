@@ -135,10 +135,9 @@ export function BottomNav({ view, onSetView }: BottomNavProps) {
 interface GameOverModalProps {
   score: number;
   onRestart: () => void;
-  onScores: () => void;
 }
 
-export function GameOverModal({ score, onRestart, onScores }: GameOverModalProps) {
+export function GameOverModal({ score, onRestart }: GameOverModalProps) {
   return (
     <div
       className="fixed inset-0 flex flex-col items-center justify-center gap-8 z-50 animate-fade-in"
@@ -153,22 +152,13 @@ export function GameOverModal({ score, onRestart, onScores }: GameOverModalProps
           {pluralScore(score)}
         </p>
       </div>
-      <div className="flex gap-3">
-        <button
-          onClick={onRestart}
-          className="px-6 py-3 font-mono text-sm rounded-sm transition-colors text-white"
-          style={{ backgroundColor: "#444" }}
-        >
-          Снова
-        </button>
-        <button
-          onClick={onScores}
-          className="px-6 py-3 font-mono text-sm rounded-sm transition-colors"
-          style={{ border: "1px solid #444", color: "#888" }}
-        >
-          Рекорды
-        </button>
-      </div>
+      <button
+        onClick={onRestart}
+        className="px-6 py-3 font-mono text-sm rounded-sm transition-colors text-white"
+        style={{ backgroundColor: "#444" }}
+      >
+        Снова
+      </button>
     </div>
   );
 }

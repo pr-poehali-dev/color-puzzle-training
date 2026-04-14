@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import ColorWheel from "@/game/ColorWheel";
 import GameBoard from "@/game/GameBoard";
-import { ScoresView, BottomNav, GameOverModal } from "@/game/GameOverlay";
+import { GameOverModal } from "@/game/GameOverlay";
 import {
   ITTEN_COLORS, COLOR_LEVELS,
   COLS, ROWS, CELL_SIZE, GAP, BOARD_W, BOARD_H, ANIM_DURATION, BG,
-  Cell, Grid, FlyingTile, Particle, ScoreEntry,
+  Cell, Grid, FlyingTile, Particle,
   getComplement, getTriad, getTetrad,
   getActiveColorIds, randColorIdFromActive,
-  emptyGrid, loadScores, getBestScore, saveScore, easeOutCubic, pluralScore,
+  emptyGrid, loadScores, getBestScore, saveScore, easeOutCubic,
 } from "@/game/constants";
 
 export default function Index() {
@@ -24,8 +24,6 @@ export default function Index() {
   const [particles, setParticles] = useState<Particle[]>([]);
   const particleIdRef = useRef(0);
   const [gameOver, setGameOver] = useState(false);
-  const [view, setView] = useState<"game" | "scores">("game");
-  const [scores, setScores] = useState<ScoreEntry[]>(loadScores());
   const [hoverCol, setHoverCol] = useState<number | null>(null);
   const [litColorIds, setLitColorIds] = useState<Set<number>>(new Set());
   const [newColorsNotice, setNewColorsNotice] = useState<string | null>(null);
@@ -204,7 +202,6 @@ export default function Index() {
       if (lastRowFull) {
         saveScore(score);
         const updated = loadScores();
-        setScores(updated);
         setBestScore(updated[0]?.score ?? score);
         setGameOver(true);
       }
@@ -259,8 +256,7 @@ export default function Index() {
       style={{ backgroundColor: BG }}
     >
       <div className="w-full max-w-xl px-3 flex-1 flex flex-col items-center">
-        {view === "game" && (
-          <div className="flex flex-col items-center gap-4 w-full pt-1">
+        <div className="flex flex-col items-center gap-4 w-full pt-1">
 
             {/* Круг + очки поверх в углах */}
             {(() => {
@@ -367,23 +363,13 @@ export default function Index() {
               уроки фотографии
             </a>
           </div>
-        )}
 
-        {view === "scores" && (
-          <ScoresView
-            scores={scores}
-            onPlay={() => setView("game")}
-          />
-        )}
       </div>
-
-      <BottomNav view={view} onSetView={setView} />
 
       {gameOver && (
         <GameOverModal
           score={score}
           onRestart={restartGame}
-          onScores={() => { setView("scores"); restartGame(); }}
         />
       )}
 
