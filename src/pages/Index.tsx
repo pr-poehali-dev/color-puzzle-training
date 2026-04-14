@@ -9,29 +9,26 @@ interface Particle {
   dist: number;
 }
 
-// 14 цветов: 12 из круга Итена (id 0-11) + белый (12) + чёрный (13)
-// Круг: 0=Жёлтый, 1=Жёлто-оранжевый, 2=Оранжевый, 3=Красно-оранжевый,
-//        4=Красный, 5=Красно-фиолетовый, 6=Фиолетовый, 7=Сине-фиолетовый,
-//        8=Синий, 9=Сине-зелёный, 10=Зелёный, 11=Жёлто-зелёный
-// Пары (через 6): 0↔6, 1↔7, 2↔8, 3↔9, 4↔10, 5↔11, 12↔13
+// 12 цветов круга Итена
+// 0=Жёлтый, 1=Жёлто-оранжевый, 2=Оранжевый, 3=Красно-оранжевый,
+// 4=Красный, 5=Красно-фиолетовый, 6=Фиолетовый, 7=Сине-фиолетовый,
+// 8=Синий, 9=Сине-зелёный, 10=Зелёный, 11=Жёлто-зелёный
+// Пары (через 6): 0↔6, 1↔7, 2↔8, 3↔9, 4↔10, 5↔11
 const ITTEN_COLORS = [
-  { id: 0,  name: "Жёлтый",          hex: "#F9E01B", border: false },
-  { id: 1,  name: "Жёлто-оранжевый", hex: "#FDB827", border: false },
-  { id: 2,  name: "Оранжевый",       hex: "#F7941D", border: false },
-  { id: 3,  name: "Красно-оранжевый",hex: "#F05A23", border: false },
-  { id: 4,  name: "Красный",         hex: "#E8231A", border: false },
-  { id: 5,  name: "Красно-фиолет.",  hex: "#A6195A", border: false },
-  { id: 6,  name: "Фиолетовый",      hex: "#662D91", border: false },
-  { id: 7,  name: "Сине-фиолет.",    hex: "#2E3192", border: false },
-  { id: 8,  name: "Синий",           hex: "#0072BC", border: false },
-  { id: 9,  name: "Сине-зелёный",    hex: "#00A99D", border: false },
-  { id: 10, name: "Зелёный",         hex: "#009444", border: false },
-  { id: 11, name: "Жёлто-зелёный",   hex: "#8DC63F", border: false },
-  { id: 12, name: "Белый",           hex: "#FFFFFF",  border: true  },
-  { id: 13, name: "Чёрный",          hex: "#111111", border: false },
+  { id: 0,  name: "Жёлтый",           hex: "#F9E01B" },
+  { id: 1,  name: "Жёлто-оранжевый",  hex: "#FDB827" },
+  { id: 2,  name: "Оранжевый",        hex: "#F7941D" },
+  { id: 3,  name: "Красно-оранжевый", hex: "#F05A23" },
+  { id: 4,  name: "Красный",          hex: "#E8231A" },
+  { id: 5,  name: "Красно-фиолет.",   hex: "#A6195A" },
+  { id: 6,  name: "Фиолетовый",       hex: "#662D91" },
+  { id: 7,  name: "Сине-фиолет.",     hex: "#2E3192" },
+  { id: 8,  name: "Синий",            hex: "#0072BC" },
+  { id: 9,  name: "Сине-зелёный",     hex: "#00A99D" },
+  { id: 10, name: "Зелёный",          hex: "#009444" },
+  { id: 11, name: "Жёлто-зелёный",    hex: "#8DC63F" },
 ];
 
-// Пары (комплемент через 6 позиций в круге 12): 0↔6, 1↔7, 2↔8, 3↔9, 4↔10, 5↔11
 // Триады (через 4): [0,4,8], [1,5,9], [2,6,10], [3,7,11]
 // Тетрады (через 3): [0,3,6,9], [1,4,7,10], [2,5,8,11]
 const TRIADS: number[][] = [
@@ -41,10 +38,7 @@ const TETRADS: number[][] = [
   [0, 3, 6, 9], [1, 4, 7, 10], [2, 5, 8, 11],
 ];
 
-const getComplement = (id: number): number => {
-  if (id <= 11) return (id + 6) % 12;
-  return id === 12 ? 13 : 12;
-};
+const getComplement = (id: number): number => (id + 6) % 12;
 
 const getTriad = (id: number): number[] | null =>
   TRIADS.find((t) => t.includes(id)) ?? null;
@@ -79,7 +73,7 @@ interface ScoreEntry {
 const emptyGrid = (): Grid =>
   Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 
-const randColorId = () => Math.floor(Math.random() * 14);
+const randColorId = () => Math.floor(Math.random() * 12);
 
 const loadScores = (): ScoreEntry[] => {
   try {
@@ -103,20 +97,18 @@ const saveScore = (score: number) => {
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
-// 12 цветов в круге (без белого и чёрного)
-const WHEEL_COLORS = ITTEN_COLORS.filter((c) => c.id <= 11);
-const WHEEL_COUNT = WHEEL_COLORS.length; // 12
+const WHEEL_COUNT = ITTEN_COLORS.length; // 12
 
 function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: number }) {
   const cx = size / 2;
   const cy = size / 2;
-  const R = size / 2 - 6;
-  const r = R * 0.45;
+  const R = size / 2 - 4;
+  const r = R * 0.38; // толстые сегменты
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {WHEEL_COLORS.map((color, idx) => {
-        const angleDeg = (360 / WHEEL_COUNT) * idx - 90; // равномерно, верх = 0°
+      {ITTEN_COLORS.map((color, idx) => {
+        const angleDeg = (360 / WHEEL_COUNT) * idx - 90;
         const rad = (angleDeg * Math.PI) / 180;
         const segAngle = (2 * Math.PI) / WHEEL_COUNT;
         const isLit = litColorIds.has(color.id);
@@ -402,16 +394,13 @@ export default function Index() {
         {view === "game" && (
           <div className="flex flex-col items-center gap-6 w-full pt-10">
 
-            {/* HUD: круг | цвет | очки+рекорд */}
-            <div
-              className="flex items-center w-full"
-              style={{ maxWidth: BOARD_W, gap: 16 }}
-            >
-              {/* Цветовой круг слева */}
-              <ColorWheel litColorIds={litColorIds} size={BOARD_W / 2 - 8} />
+            {/* HUD: круг во всю ширину */}
+            <div className="flex flex-col items-center w-full" style={{ maxWidth: BOARD_W, gap: 12 }}>
+              {/* Цветовой круг — полная ширина поля */}
+              <ColorWheel litColorIds={litColorIds} size={BOARD_W} />
 
-              {/* Следующий цвет + очки справа */}
-              <div className="flex flex-col items-center gap-3" style={{ flex: 1 }}>
+              {/* Следующий цвет + очки */}
+              <div className="flex items-center justify-between w-full" style={{ maxWidth: BOARD_W }}>
                 {/* Следующий цвет */}
                 <div
                   className="rounded-sm"
@@ -420,10 +409,7 @@ export default function Index() {
                     height: CELL_SIZE,
                     backgroundColor: currentColor.hex,
                     transition: "background-color 0.25s ease, box-shadow 0.25s",
-                    boxShadow: currentColor.id === 6
-                      ? "0 0 0 1px #555, 0 4px 20px rgba(255,255,255,0.2)"
-                      : `0 4px 20px ${currentColor.hex}66`,
-                    outline: currentColor.border ? "1px solid #555" : undefined,
+                    boxShadow: `0 4px 20px ${currentColor.hex}66`,
                   }}
                 />
 
@@ -494,7 +480,6 @@ export default function Index() {
                         width: CELL_SIZE,
                         height: CELL_SIZE,
                         backgroundColor: c ? c.hex : isHoverCol ? CELL_EMPTY_HOVER : CELL_EMPTY,
-                        outline: c?.border ? "1px solid #555" : undefined,
                         animation: isPopping
                           ? "pop 0.32s cubic-bezier(0.36,0.07,0.19,0.97) forwards"
                           : undefined,
@@ -520,7 +505,7 @@ export default function Index() {
                       width: 10,
                       height: 10,
                       backgroundColor: p.color,
-                      border: p.color === "#FFFFFF" ? "1px solid #555" : undefined,
+
                       animation: "particle-burst 0.5s cubic-bezier(0.2,0.8,0.4,1) forwards",
                       ["--tx" as string]: `${tx}px`,
                       ["--ty" as string]: `${ty}px`,
@@ -540,10 +525,7 @@ export default function Index() {
                     width: CELL_SIZE,
                     height: CELL_SIZE,
                     backgroundColor: ITTEN_COLORS[flyingTile.colorId].hex,
-                    outline: ITTEN_COLORS[flyingTile.colorId].border ? "1px solid #555" : undefined,
-                    boxShadow: flyingTile.colorId === 6
-                      ? "0 2px 20px rgba(255,255,255,0.3)"
-                      : `0 2px 20px ${ITTEN_COLORS[flyingTile.colorId].hex}77`,
+                    boxShadow: `0 2px 20px ${ITTEN_COLORS[flyingTile.colorId].hex}77`,
                     zIndex: 10,
                   }}
                 />
