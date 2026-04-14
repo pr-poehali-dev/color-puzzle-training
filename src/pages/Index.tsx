@@ -9,26 +9,33 @@ interface Particle {
   dist: number;
 }
 
-// 6 основных цветов — комплементарные пары: 0↔3, 1↔4, 2↔5
+// 6 цветов. Пары (комплементарные): 0↔3, 1↔4, 2↔5
+// Триады: [0,2,4] = жёлтый+красный+синий, [1,3,5] = оранжевый+фиолетовый+зелёный
 const ITTEN_COLORS = [
-  { id: 0, name: "Жёлтый",    hex: "#F9E01B" },
-  { id: 1, name: "Оранжевый", hex: "#F7941D" },
-  { id: 2, name: "Красный",   hex: "#E8231A" },
-  { id: 3, name: "Фиолетовый",hex: "#662D91" },
-  { id: 4, name: "Синий",     hex: "#0072BC" },
-  { id: 5, name: "Зелёный",   hex: "#009444" },
+  { id: 0, name: "Жёлтый",     hex: "#F9E01B" },
+  { id: 1, name: "Оранжевый",  hex: "#F7941D" },
+  { id: 2, name: "Красный",    hex: "#E8231A" },
+  { id: 3, name: "Фиолетовый", hex: "#662D91" },
+  { id: 4, name: "Синий",      hex: "#0072BC" },
+  { id: 5, name: "Зелёный",    hex: "#009444" },
 ];
+
+const TRIADS: number[][] = [[0, 2, 4], [1, 3, 5]];
 
 const getComplement = (id: number) => (id + 3) % 6;
 
-const COLS = 5;
+const getTriad = (id: number): number[] | null => {
+  return TRIADS.find((t) => t.includes(id)) ?? null;
+};
+
+const COLS = 4;
 const ROWS = 8;
-const CELL_SIZE = 52;
-const GAP = 4;
+const CELL_SIZE = 72;
+const GAP = 5;
 const BOARD_W = COLS * CELL_SIZE + (COLS - 1) * GAP;
 const BOARD_H = ROWS * CELL_SIZE + (ROWS - 1) * GAP;
-const ANIM_DURATION = 380;
-const STORAGE_KEY = "colorist_scores_v1";
+const ANIM_DURATION = 400;
+const STORAGE_KEY = "colorist_scores_v2";
 
 type Cell = { colorId: number } | null;
 type Grid = Cell[][];
@@ -72,6 +79,7 @@ export default function Index() {
   const [currentColorId, setCurrentColorId] = useState<number>(randColorId());
   const [score, setScore] = useState(0);
   const [scoreAnim, setScoreAnim] = useState(false);
+  const [lastPoints, setLastPoints] = useState<number | null>(null);
   const [flyingTile, setFlyingTile] = useState<FlyingTile | null>(null);
   const [poppingCells, setPoppingCells] = useState<Set<string>>(new Set());
   const [particles, setParticles] = useState<Particle[]>([]);
@@ -85,7 +93,6 @@ export default function Index() {
   const animFrameRef = useRef<number | null>(null);
   const flyStartRef = useRef<number>(0);
 
-  // Первая свободная строка сверху (цвет летит снизу вверх и остаётся наверху)
   const findTargetRow = useCallback((col: number, g: Grid): number => {
     for (let r = 0; r < ROWS; r++) {
       if (!g[r][col]) return r;
@@ -93,58 +100,95 @@ export default function Index() {
     return -1;
   }, []);
 
-  const triggerScoreAnim = () => {
+  const triggerScoreAnim = (pts: number) => {
+    setLastPoints(pts);
     setScoreAnim(true);
-    setTimeout(() => setScoreAnim(false), 350);
+    setTimeout(() => { setScoreAnim(false); setLastPoints(null); }, 600);
   };
+
+  const spawnParticles = useCallback((cells: [number, number][], g: Grid) => {
+    const newParticles: Particle[] = [];
+    cells.forEach(([r, c]) => {
+      const cellColor = g[r][c]?.colorId ?? 0;
+      const cx = c * (CELL_SIZE + GAP) + CELL_SIZE / 2;
+      const cy = r * (CELL_SIZE + GAP) + CELL_SIZE / 2;
+      for (let i = 0; i < 8; i++) {
+        newParticles.push({
+          id: ++particleIdRef.current,
+          x: cx,
+          y: cy,
+          color: ITTEN_COLORS[cellColor].hex,
+          angle: (360 / 8) * i + Math.random() * 15 - 7,
+          dist: 30 + Math.random() * 35,
+        });
+      }
+    });
+    setParticles((prev) => [...prev, ...newParticles]);
+    setTimeout(() => {
+      const ids = new Set(newParticles.map((p) => p.id));
+      setParticles((prev) => prev.filter((p) => !ids.has(p.id)));
+    }, 600);
+  }, []);
 
   const checkAndPop = useCallback(
     (g: Grid, row: number, col: number, colorId: number) => {
-      const complement = getComplement(colorId);
-      const toRemove: [number, number][] = [];
-      const directions = [
-        [0, 1], [0, -1], [1, 0], [-1, 0],
-      ];
+      const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+      const triad = getTriad(colorId);
+      const triadOthers = triad ? triad.filter((id) => id !== colorId) : [];
 
-      for (const [dr, dc] of directions) {
+      // Ищем соседей по 4 направлениям
+      const neighbors: { r: number; c: number; colorId: number }[] = [];
+      for (const [dr, dc] of dirs) {
         const nr = row + dr;
         const nc = col + dc;
-        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
-          if (g[nr][nc]?.colorId === complement) {
-            toRemove.push([nr, nc]);
+        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && g[nr][nc]) {
+          neighbors.push({ r: nr, c: nc, colorId: g[nr][nc]!.colorId });
+        }
+      }
+
+      const neighborColorIds = neighbors.map((n) => n.colorId);
+
+      // Проверяем триаду: нужны оба других цвета триады среди соседей
+      let toRemove: [number, number][] = [];
+      let points = 0;
+      let isTriad = false;
+
+      if (triad && triadOthers.every((id) => neighborColorIds.includes(id))) {
+        // Нашли триаду! Берём по одному соседу каждого цвета
+        toRemove.push([row, col]);
+        for (const otherId of triadOthers) {
+          const neighbor = neighbors.find((n) => n.colorId === otherId)!;
+          toRemove.push([neighbor.r, neighbor.c]);
+        }
+        points = 5;
+        isTriad = true;
+      } else {
+        // Проверяем комплементарную пару
+        const complement = getComplement(colorId);
+        for (const n of neighbors) {
+          if (n.colorId === complement) {
             toRemove.push([row, col]);
+            toRemove.push([n.r, n.c]);
+            points = 1;
+            break;
           }
         }
       }
 
       if (toRemove.length === 0) return;
 
-      const popKey = (r: number, c: number) => `${r}-${c}`;
-      const popSet = new Set(toRemove.map(([r, c]) => popKey(r, c)));
-      setPoppingCells(popSet);
-
-      // Спавним частицы для каждой исчезающей ячейки
-      const newParticles: Particle[] = [];
-      toRemove.forEach(([r, c]) => {
-        const cellColor = g[r][c]?.colorId ?? 0;
-        const cx = c * (CELL_SIZE + GAP) + CELL_SIZE / 2;
-        const cy = r * (CELL_SIZE + GAP) + CELL_SIZE / 2;
-        for (let i = 0; i < 7; i++) {
-          newParticles.push({
-            id: ++particleIdRef.current,
-            x: cx,
-            y: cy,
-            color: ITTEN_COLORS[cellColor].hex,
-            angle: (360 / 7) * i + Math.random() * 20 - 10,
-            dist: 28 + Math.random() * 28,
-          });
-        }
+      // Убираем дубликаты
+      const seen = new Set<string>();
+      toRemove = toRemove.filter(([r, c]) => {
+        const k = `${r}-${c}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
       });
-      setParticles((prev) => [...prev, ...newParticles]);
-      setTimeout(() => {
-        const ids = new Set(newParticles.map((p) => p.id));
-        setParticles((prev) => prev.filter((p) => !ids.has(p.id)));
-      }, 550);
+
+      const popSet = new Set(toRemove.map(([r, c]) => `${r}-${c}`));
+      setPoppingCells(popSet);
+      spawnParticles(toRemove, g);
 
       setTimeout(() => {
         setGrid((prev) => {
@@ -153,12 +197,12 @@ export default function Index() {
           return next;
         });
         setPoppingCells(new Set());
-        const pairs = Math.floor(toRemove.length / 2);
-        setScore((s) => s + pairs);
-        triggerScoreAnim();
+        setScore((s) => s + points);
+        triggerScoreAnim(points);
+        void isTriad;
       }, 320);
     },
-    []
+    [spawnParticles]
   );
 
   const handleColumnClick = useCallback(
@@ -196,11 +240,15 @@ export default function Index() {
     [flyingTile, gameOver, grid, currentColorId, findTargetRow, checkAndPop]
   );
 
+  // Game over — последняя строка заполнена
   useEffect(() => {
-    if (!gameOver && !flyingTile && grid[0].every((cell) => cell !== null)) {
-      setGameOver(true);
-      saveScore(score);
-      setScores(loadScores());
+    if (!gameOver && !flyingTile) {
+      const lastRowFull = grid[ROWS - 1].every((cell) => cell !== null);
+      if (lastRowFull) {
+        setGameOver(true);
+        saveScore(score);
+        setScores(loadScores());
+      }
     }
   }, [grid, flyingTile, gameOver, score]);
 
@@ -219,12 +267,13 @@ export default function Index() {
     setFlyingTile(null);
     setPoppingCells(new Set());
     setGameOver(false);
+    setLastPoints(null);
   };
 
   const getFlyingY = (ft: FlyingTile) => {
     const p = easeOutCubic(ft.progress);
-    const startY = BOARD_H + CELL_SIZE * 0.5; // ниже поля
-    const endY = ft.targetRow * (CELL_SIZE + GAP); // целевая строка сверху
+    const startY = BOARD_H + CELL_SIZE * 0.5;
+    const endY = ft.targetRow * (CELL_SIZE + GAP);
     return startY + (endY - startY) * p;
   };
 
@@ -235,16 +284,21 @@ export default function Index() {
   };
 
   return (
-    <div className="min-h-screen font-sans flex flex-col items-center select-none" style={{ backgroundColor: "#E8E8E8" }}>
+    <div
+      className="min-h-screen font-sans flex flex-col items-center select-none"
+      style={{ backgroundColor: "#E8E8E8" }}
+    >
       {/* Header */}
       <header className="w-full max-w-xl px-6 pt-10 pb-2 flex items-end justify-between">
         <div>
           <h1 className="font-mono text-lg font-medium tracking-tight text-neutral-900 leading-none">
             Колорист
           </h1>
-          <p className="text-xs text-neutral-400 font-mono mt-1">круг Итена · комплементарные пары</p>
+          <p className="text-xs text-neutral-400 font-mono mt-1">
+            круг Итена · пары и триады
+          </p>
         </div>
-        <nav className="flex gap-0.5 border border-neutral-100 rounded p-0.5">
+        <nav className="flex gap-0.5 border border-neutral-200 rounded p-0.5 bg-white/50">
           {(["game", "scores"] as const).map((v) => (
             <button
               key={v}
@@ -265,12 +319,12 @@ export default function Index() {
         {view === "game" && (
           <div className="flex flex-col items-center gap-5 w-full">
             {/* Score */}
-            <div className="flex items-center gap-10 pt-4">
+            <div className="flex items-center gap-10 pt-4 relative">
               <div className="text-center">
                 <div
                   className="font-mono text-5xl font-medium text-neutral-900"
                   style={{
-                    transform: scoreAnim ? "scale(1.3)" : "scale(1)",
+                    transform: scoreAnim ? "scale(1.25)" : "scale(1)",
                     transition: "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
                     display: "inline-block",
                   }}
@@ -279,11 +333,26 @@ export default function Index() {
                 </div>
                 <div className="text-xs text-neutral-400 font-mono mt-0.5">очки</div>
               </div>
-              <div className="w-px h-8 bg-neutral-100" />
+              <div className="w-px h-8 bg-neutral-300" />
               <div className="text-center">
-                <div className="font-mono text-5xl font-medium text-neutral-200">{moveCount}</div>
+                <div className="font-mono text-5xl font-medium text-neutral-300">{moveCount}</div>
                 <div className="text-xs text-neutral-400 font-mono mt-0.5">ходов</div>
               </div>
+
+              {/* Floating +points label */}
+              {lastPoints !== null && (
+                <div
+                  key={score}
+                  className="absolute -top-2 left-0 font-mono font-medium pointer-events-none"
+                  style={{
+                    fontSize: lastPoints >= 5 ? 28 : 20,
+                    color: lastPoints >= 5 ? "#F7941D" : "#009444",
+                    animation: "float-up 0.6s ease-out forwards",
+                  }}
+                >
+                  +{lastPoints}
+                </div>
+              )}
             </div>
 
             {/* Next color */}
@@ -298,13 +367,16 @@ export default function Index() {
                   height: CELL_SIZE,
                   backgroundColor: ITTEN_COLORS[currentColorId].hex,
                   transition: "background-color 0.3s ease, box-shadow 0.3s",
-                  boxShadow: `0 4px 18px ${ITTEN_COLORS[currentColorId].hex}55`,
+                  boxShadow: `0 4px 20px ${ITTEN_COLORS[currentColorId].hex}66`,
                 }}
               />
             </div>
 
             {/* Board */}
-            <div className="relative" style={{ width: BOARD_W, height: BOARD_H }}>
+            <div
+              className="relative overflow-visible"
+              style={{ width: BOARD_W, height: BOARD_H }}
+            >
               {grid.map((row, ri) =>
                 row.map((cell, ci) => {
                   const key = `${ri}-${ci}`;
@@ -326,7 +398,7 @@ export default function Index() {
                         animation: isPopping
                           ? "pop 0.32s cubic-bezier(0.36,0.07,0.19,0.97) forwards"
                           : undefined,
-                        transition: "background-color 0.15s",
+                        transition: cell ? undefined : "background-color 0.1s",
                       }}
                     />
                   );
@@ -348,9 +420,9 @@ export default function Index() {
                       width: 10,
                       height: 10,
                       backgroundColor: p.color,
-                      animation: `particle-burst 0.5s cubic-bezier(0.2,0.8,0.4,1) forwards`,
-                      ['--tx' as string]: `${tx}px`,
-                      ['--ty' as string]: `${ty}px`,
+                      animation: "particle-burst 0.5s cubic-bezier(0.2,0.8,0.4,1) forwards",
+                      ["--tx" as string]: `${tx}px`,
+                      ["--ty" as string]: `${ty}px`,
                       zIndex: 20,
                     }}
                   />
@@ -367,13 +439,12 @@ export default function Index() {
                     width: CELL_SIZE,
                     height: CELL_SIZE,
                     backgroundColor: ITTEN_COLORS[flyingTile.colorId].hex,
-                    boxShadow: `0 2px 16px ${ITTEN_COLORS[flyingTile.colorId].hex}66`,
+                    boxShadow: `0 2px 20px ${ITTEN_COLORS[flyingTile.colorId].hex}77`,
                     zIndex: 10,
                   }}
                 />
               )}
             </div>
-
           </div>
         )}
 
@@ -383,18 +454,18 @@ export default function Index() {
               Таблица рекордов
             </h2>
             {scores.length === 0 ? (
-              <p className="font-mono text-neutral-300 text-sm text-center mt-12">
-                Пока нет результатов.<br/>Сыграйте первую партию!
+              <p className="font-mono text-neutral-400 text-sm text-center mt-12">
+                Пока нет результатов.<br />Сыграйте первую партию!
               </p>
             ) : (
               <div>
                 {scores.map((entry, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-between py-3.5 border-b border-neutral-100"
+                    className="flex items-center justify-between py-3.5 border-b border-neutral-200"
                   >
                     <div className="flex items-center gap-5">
-                      <span className="font-mono text-xs text-neutral-300 w-4 text-right">
+                      <span className="font-mono text-xs text-neutral-400 w-4 text-right">
                         {i + 1}
                       </span>
                       <span className="font-mono text-2xl font-medium text-neutral-900">
@@ -404,7 +475,7 @@ export default function Index() {
                         {pluralScore(entry.score)}
                       </span>
                     </div>
-                    <span className="font-mono text-xs text-neutral-300">{entry.date}</span>
+                    <span className="font-mono text-xs text-neutral-400">{entry.date}</span>
                   </div>
                 ))}
               </div>
@@ -421,7 +492,7 @@ export default function Index() {
 
       {/* Game Over */}
       {gameOver && (
-        <div className="fixed inset-0 bg-white/92 backdrop-blur-sm flex flex-col items-center justify-center gap-8 z-50 animate-fade-in">
+        <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center gap-8 z-50 animate-fade-in">
           <div className="text-center">
             <p className="font-mono text-xs text-neutral-400 uppercase tracking-widest mb-4">
               Поле заполнено
@@ -433,18 +504,6 @@ export default function Index() {
               {pluralScore(score)}
             </p>
           </div>
-          <div
-            className="flex gap-1.5"
-            style={{ width: BOARD_W }}
-          >
-            {ITTEN_COLORS.slice(0, COLS).map((c) => (
-              <div
-                key={c.id}
-                className="rounded-sm"
-                style={{ width: CELL_SIZE, height: 6, backgroundColor: c.hex }}
-              />
-            ))}
-          </div>
           <div className="flex gap-3">
             <button
               onClick={restartGame}
@@ -453,11 +512,8 @@ export default function Index() {
               Снова
             </button>
             <button
-              onClick={() => {
-                setView("scores");
-                restartGame();
-              }}
-              className="px-6 py-3 border border-neutral-200 text-neutral-600 font-mono text-sm rounded-sm hover:border-neutral-400 transition-colors"
+              onClick={() => { setView("scores"); restartGame(); }}
+              className="px-6 py-3 border border-neutral-300 text-neutral-600 font-mono text-sm rounded-sm hover:border-neutral-500 transition-colors"
             >
               Рекорды
             </button>
@@ -466,6 +522,13 @@ export default function Index() {
       )}
 
       <footer className="py-5" />
+
+      <style>{`
+        @keyframes float-up {
+          0%   { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-40px); }
+        }
+      `}</style>
     </div>
   );
 }
