@@ -55,6 +55,25 @@ const BOARD_H = ROWS * CELL_SIZE + (ROWS - 1) * GAP;
 const ANIM_DURATION = 400;
 const STORAGE_KEY = "colorist_scores_v3";
 
+// Уровни: [порог очков, добавляемые id цветов]
+const COLOR_LEVELS: { threshold: number; ids: number[] }[] = [
+  { threshold: 0,  ids: [0, 2, 4, 6, 8, 10] }, // старт: 6 основных
+  { threshold: 10, ids: [1, 7] },               // +2 при 10 очках
+  { threshold: 25, ids: [3, 9] },               // +2 при 25 очках
+  { threshold: 40, ids: [5, 11] },              // +2 при 40 очках
+];
+
+const getActiveColorIds = (score: number): number[] => {
+  const ids: number[] = [];
+  for (const level of COLOR_LEVELS) {
+    if (score >= level.threshold) ids.push(...level.ids);
+  }
+  return ids;
+};
+
+const randColorIdFromActive = (activeIds: number[]) =>
+  activeIds[Math.floor(Math.random() * activeIds.length)];
+
 type Cell = { colorId: number } | null;
 type Grid = Cell[][];
 
@@ -73,7 +92,6 @@ interface ScoreEntry {
 const emptyGrid = (): Grid =>
   Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 
-const randColorId = () => Math.floor(Math.random() * 12);
 
 const loadScores = (): ScoreEntry[] => {
   try {
@@ -97,13 +115,13 @@ const saveScore = (score: number) => {
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
-const WHEEL_COUNT = ITTEN_COLORS.length; // 12
+const WHEEL_COUNT = ITTEN_COLORS.length; // 12 (для геометрии колеса)
 
-function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: number }) {
+function ColorWheel({ litColorIds, activeColorIds, size }: { litColorIds: Set<number>; activeColorIds: Set<number>; size: number }) {
   const cx = size / 2;
   const cy = size / 2;
   const R = size / 2 - 4;
-  const r = R * 0.38; // толстые сегменты
+  const r = R * 0.38;
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -112,9 +130,11 @@ function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: num
         const rad = (angleDeg * Math.PI) / 180;
         const segAngle = (2 * Math.PI) / WHEEL_COUNT;
         const isLit = litColorIds.has(color.id);
-        // Если есть активные — гасим все остальные; если нет — все яркие
+        const isActive = activeColorIds.has(color.id);
         const hasFocus = litColorIds.size > 0;
-        const opacity = hasFocus ? (isLit ? 1 : 0.1) : 0.85;
+        // Неактивные цвета — почти невидимы
+        // Активные: подсвечены если lit, иначе обычные
+        const opacity = !isActive ? 0.07 : hasFocus ? (isLit ? 1 : 0.2) : 0.85;
 
         // Сегмент-дуга
         const startRad = rad - segAngle / 2;
@@ -221,8 +241,9 @@ function DownloadButton() {
 
 export default function Index() {
   const [grid, setGrid] = useState<Grid>(emptyGrid());
-  const [currentColorId, setCurrentColorId] = useState<number>(randColorId());
   const [score, setScore] = useState(0);
+  const activeColorIds = getActiveColorIds(score);
+  const [currentColorId, setCurrentColorId] = useState<number>(() => randColorIdFromActive(getActiveColorIds(0)));
   const [bestScore, setBestScore] = useState(getBestScore());
   const [scoreAnim, setScoreAnim] = useState(false);
   const [lastPoints, setLastPoints] = useState<number | null>(null);
@@ -235,6 +256,8 @@ export default function Index() {
   const [scores, setScores] = useState<ScoreEntry[]>(loadScores());
   const [hoverCol, setHoverCol] = useState<number | null>(null);
   const [litColorIds, setLitColorIds] = useState<Set<number>>(new Set());
+  const [newColorsNotice, setNewColorsNotice] = useState<string | null>(null);
+  const prevActiveLenRef = useRef(getActiveColorIds(0).length);
 
   const animFrameRef = useRef<number | null>(null);
   const flyStartRef = useRef<number>(0);
@@ -390,7 +413,7 @@ export default function Index() {
             checkAndPop(next, targetRow, col, colorId);
             return next;
           });
-          setCurrentColorId(randColorId());
+          setCurrentColorId(randColorIdFromActive(activeColorIds));
         }
       };
 
@@ -412,6 +435,20 @@ export default function Index() {
     }
   }, [grid, flyingTile, gameOver, score]);
 
+  // Уведомление при разблокировке новых цветов
+  useEffect(() => {
+    const newLen = activeColorIds.length;
+    if (newLen > prevActiveLenRef.current) {
+      const added = COLOR_LEVELS.find((l) => l.threshold === score);
+      if (added) {
+        const names = added.ids.map((id) => ITTEN_COLORS[id].name).join(" и ");
+        setNewColorsNotice(`+2 новых цвета: ${names}!`);
+        setTimeout(() => setNewColorsNotice(null), 2500);
+      }
+    }
+    prevActiveLenRef.current = newLen;
+  }, [score]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -421,12 +458,13 @@ export default function Index() {
   const restartGame = () => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     setGrid(emptyGrid());
-    setCurrentColorId(randColorId());
+    setCurrentColorId(randColorIdFromActive(getActiveColorIds(0)));
     setScore(0);
     setFlyingTile(null);
     setPoppingCells(new Set());
     setGameOver(false);
     setLastPoints(null);
+    prevActiveLenRef.current = getActiveColorIds(0).length;
   };
 
   const getFlyingY = (ft: FlyingTile) => {
@@ -465,7 +503,7 @@ export default function Index() {
                 <div className="relative" style={{ width: BOARD_W, height: wheelSize }}>
                   {/* Круг по центру */}
                   <div className="absolute" style={{ left: (BOARD_W - wheelSize) / 2, top: 0 }}>
-                    <ColorWheel litColorIds={litColorIds} size={wheelSize} />
+                    <ColorWheel litColorIds={litColorIds} activeColorIds={new Set(activeColorIds)} size={wheelSize} />
                     {/* Квадрат в центре круга */}
                     <div
                       className="absolute rounded-sm"
@@ -525,6 +563,16 @@ export default function Index() {
                 </div>
               );
             })()}
+
+            {/* Уведомление о новых цветах */}
+            {newColorsNotice && (
+              <div
+                className="font-mono text-xs text-center animate-fade-in"
+                style={{ color: "#aaa", letterSpacing: "0.05em", marginTop: -8 }}
+              >
+                {newColorsNotice}
+              </div>
+            )}
 
             {/* Board */}
             <div
