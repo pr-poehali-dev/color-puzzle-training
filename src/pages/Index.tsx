@@ -140,18 +140,18 @@ function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: num
             key={color.id}
             d={d}
             fill={color.hex}
-            opacity={isLit ? 1 : 0.12}
+            opacity={isLit ? 1 : 0.55}
             stroke={BG}
-            strokeWidth={2}
+            strokeWidth={1.5}
             style={{
-              transition: "opacity 0.3s ease",
-              filter: isLit ? `drop-shadow(0 0 6px ${color.hex})` : undefined,
+              transition: "opacity 0.3s ease, filter 0.3s ease",
+              filter: isLit ? `drop-shadow(0 0 8px ${color.hex})` : undefined,
             }}
           />
         );
       })}
-      {/* Центральный кружок */}
-      <circle cx={cx} cy={cy} r={r * 0.35} fill={BG} opacity={0.8} />
+      {/* Центральное отверстие */}
+      <circle cx={cx} cy={cy} r={r} fill={BG} />
     </svg>
   );
 }
@@ -394,64 +394,65 @@ export default function Index() {
         {view === "game" && (
           <div className="flex flex-col items-center gap-6 w-full pt-10">
 
-            {/* HUD: круг во всю ширину */}
-            <div className="flex flex-col items-center w-full" style={{ maxWidth: BOARD_W, gap: 12 }}>
-              {/* Цветовой круг — полная ширина поля */}
-              <ColorWheel litColorIds={litColorIds} size={BOARD_W} />
-
-              {/* Следующий цвет + очки */}
-              <div className="flex items-center justify-between w-full" style={{ maxWidth: BOARD_W }}>
-                {/* Следующий цвет */}
+            {/* HUD */}
+            <div className="flex items-center w-full" style={{ maxWidth: BOARD_W, gap: 12 }}>
+              {/* Цветовой круг с квадратом в центре */}
+              <div className="relative flex-shrink-0" style={{ width: BOARD_W * 0.62, height: BOARD_W * 0.62 }}>
+                <ColorWheel litColorIds={litColorIds} size={BOARD_W * 0.62} />
+                {/* Квадрат следующего цвета — в центре круга */}
                 <div
-                  className="rounded-sm"
+                  className="absolute rounded-sm"
                   style={{
-                    width: CELL_SIZE,
-                    height: CELL_SIZE,
+                    width: CELL_SIZE * 0.9,
+                    height: CELL_SIZE * 0.9,
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
                     backgroundColor: currentColor.hex,
                     transition: "background-color 0.25s ease, box-shadow 0.25s",
-                    boxShadow: `0 4px 20px ${currentColor.hex}66`,
+                    boxShadow: `0 4px 24px ${currentColor.hex}88`,
                   }}
                 />
+              </div>
 
-                {/* Очки и рекорд */}
-                <div className="flex gap-5 items-end">
-                  <div className="text-center relative">
-                    <div
-                      className="font-mono font-medium text-white leading-none"
-                      style={{
-                        fontSize: 22,
-                        transform: scoreAnim ? "scale(1.2)" : "scale(1)",
-                        transition: "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
-                        display: "inline-block",
-                      }}
-                    >
-                      {score}
-                      {lastPoints !== null && (
-                        <span
-                          key={score}
-                          className="absolute font-mono font-medium pointer-events-none"
-                          style={{
-                            top: -2,
-                            left: "100%",
-                            marginLeft: 4,
-                            fontSize: lastPoints >= 100 ? 22 : lastPoints >= 5 ? 16 : 12,
-                            color: lastPoints >= 100 ? "#FFD700" : lastPoints >= 5 ? "#F7941D" : "#8DC63F",
-                            animation: "float-up 0.7s ease-out forwards",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          +{lastPoints}
-                        </span>
-                      )}
-                    </div>
-                    <div className="font-mono text-xs mt-0.5" style={{ color: "#555", fontSize: 10 }}>очки</div>
+              {/* Очки и рекорд справа — вертикально */}
+              <div className="flex flex-col gap-5 items-start" style={{ flex: 1 }}>
+                <div className="relative">
+                  <div
+                    className="font-mono font-medium text-white leading-none"
+                    style={{
+                      fontSize: 28,
+                      transform: scoreAnim ? "scale(1.2)" : "scale(1)",
+                      transition: "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+                      display: "inline-block",
+                    }}
+                  >
+                    {score}
+                    {lastPoints !== null && (
+                      <span
+                        key={score}
+                        className="absolute font-mono font-medium pointer-events-none"
+                        style={{
+                          top: -2,
+                          left: "100%",
+                          marginLeft: 5,
+                          fontSize: lastPoints >= 100 ? 20 : lastPoints >= 5 ? 16 : 12,
+                          color: lastPoints >= 100 ? "#FFD700" : lastPoints >= 5 ? "#F7941D" : "#8DC63F",
+                          animation: "float-up 0.7s ease-out forwards",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        +{lastPoints}
+                      </span>
+                    )}
                   </div>
-                  <div className="text-center">
-                    <div className="font-mono font-medium leading-none" style={{ fontSize: 22, color: "#4a4a4a" }}>
-                      {bestScore}
-                    </div>
-                    <div className="font-mono text-xs mt-0.5" style={{ color: "#555", fontSize: 10 }}>рекорд</div>
+                  <div className="font-mono mt-1" style={{ color: "#555", fontSize: 11 }}>очки</div>
+                </div>
+                <div>
+                  <div className="font-mono font-medium leading-none" style={{ fontSize: 28, color: "#4a4a4a" }}>
+                    {bestScore}
                   </div>
+                  <div className="font-mono mt-1" style={{ color: "#555", fontSize: 11 }}>рекорд</div>
                 </div>
               </div>
             </div>
