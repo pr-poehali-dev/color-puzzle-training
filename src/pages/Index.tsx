@@ -545,6 +545,17 @@ export default function Index() {
                 />
               )}
             </div>
+
+            {/* Ссылка внизу */}
+            <a
+              href="https://vk.ru/fotoklubpro"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono tracking-widest uppercase"
+              style={{ fontSize: 11, color: "#555", letterSpacing: "0.15em", textDecoration: "none" }}
+            >
+              уроки фотографии
+            </a>
           </div>
         )}
 
