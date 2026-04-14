@@ -125,11 +125,8 @@ export function BottomNav({ view, onSetView }: BottomNavProps) {
             backgroundColor: view === v ? "#444" : "transparent",
             color: view === v ? "#fff" : "#555",
           }}
-        >
-          {v === "game" ? "Игра" : "Рекорды"}
-        </button>
+        />
       ))}
-      <DownloadButton />
     </nav>
   );
 }
