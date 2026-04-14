@@ -18,55 +18,67 @@ function DownloadHtmlButton() {
     setLoading(true);
     try {
       const origin = window.location.origin;
-      const pageUrl = origin + '/';
-      const htmlResp = await fetch(pageUrl);
-      let html = await htmlResp.text();
 
-      // Инлайним локальные CSS (не трогаем внешние — fonts.googleapis.com и т.п.)
-      const linkMatches = [...html.matchAll(/<link([^>]+)>/g)];
-      for (const m of linkMatches) {
-        const tag = m[0];
-        const hrefMatch = tag.match(/href="([^"]+)"/);
-        if (!hrefMatch) continue;
-        const href = hrefMatch[1];
+      // Парсим текущий документ через DOM
+      const doc = document.implementation.createHTMLDocument('');
+      doc.documentElement.innerHTML = document.documentElement.innerHTML;
+
+      // Убираем платформенные и аналитические скрипты
+      doc.querySelectorAll('script[src]').forEach(el => {
+        const src = el.getAttribute('src') || '';
+        if (src.includes('poehali.dev') || src.includes('yandex') || src.includes('mc.yandex')) {
+          el.remove();
+        }
+      });
+
+      // Убираем Яндекс.Метрику (инлайн-скрипт с ym())
+      doc.querySelectorAll('script:not([src])').forEach(el => {
+        if (el.textContent?.includes('ym(') || el.textContent?.includes('Metrika')) {
+          el.remove();
+        }
+      });
+
+      // Убираем noscript с метрикой
+      doc.querySelectorAll('noscript').forEach(el => el.remove());
+
+      // Убираем Google Fonts ссылки, modulepreload, prefetch
+      doc.querySelectorAll('link').forEach(el => {
+        const rel = el.getAttribute('rel') || '';
+        const href = el.getAttribute('href') || '';
+        if (href.includes('fonts.googleapis') || href.includes('fonts.gstatic')) { el.remove(); return; }
+        if (rel === 'modulepreload' || rel === 'prefetch') { el.remove(); return; }
+      });
+
+      // Инлайним локальный CSS
+      const cssLinks = [...doc.querySelectorAll('link[rel="stylesheet"]')];
+      for (const el of cssLinks) {
+        const href = el.getAttribute('href') || '';
         if (href.startsWith('http') || href.startsWith('//')) continue;
-        if (!tag.includes('stylesheet')) continue;
-        const url = href.startsWith('/') ? origin + href : pageUrl + href;
+        const url = origin + (href.startsWith('/') ? href : '/' + href);
         const content = await fetch(url).then(r => r.text());
-        html = html.replace(tag, `<style>${content}</style>`);
+        const style = doc.createElement('style');
+        style.textContent = content;
+        el.replaceWith(style);
       }
 
-      // Инлайним локальные JS
-      const scriptMatches = [...html.matchAll(/<script([^>]*)><\/script>/g)];
-      for (const m of scriptMatches) {
-        const attrs = m[1];
-        const srcMatch = attrs.match(/src="([^"]+)"/);
-        if (!srcMatch) continue;
-        const src = srcMatch[1];
+      // Инлайним локальный JS (убираем type=module — блокирует file://)
+      const jsScripts = [...doc.querySelectorAll('script[src]')];
+      for (const el of jsScripts) {
+        const src = el.getAttribute('src') || '';
         if (src.startsWith('http') || src.startsWith('//')) continue;
-        const url = src.startsWith('/') ? origin + src : pageUrl + src;
+        const url = origin + (src.startsWith('/') ? src : '/' + src);
         const content = await fetch(url).then(r => r.text());
-        html = html.replace(m[0], `<script>${content}</script>`);
+        const script = doc.createElement('script');
+        script.textContent = content;
+        el.replaceWith(script);
       }
 
-      // Убираем всё что не работает офлайн:
-      // — скрипты платформы (cdn.poehali.dev, mc.yandex.ru)
-      html = html.replace(/<script[^>]+src="https:\/\/cdn\.poehali\.dev[^"]*"[^>]*><\/script>/g, '');
-      html = html.replace(/<script[^>]+src="https:\/\/mc\.yandex[^"]*"[^>]*><\/script>/g, '');
-      // — блок Яндекс.Метрики (многострочный)
-      html = html.replace(/<!-- Yandex\.Metrika counter -->[\s\S]*?<!-- \/Yandex\.Metrika counter -->/g, '');
-      // — modulepreload / prefetch
-      html = html.replace(/<link[^>]+rel="modulepreload"[^>]*>/g, '');
-      html = html.replace(/<link[^>]+rel="prefetch"[^>]*>/g, '');
-      // — Google Fonts (заменяем на системный моноширинный шрифт)
-      html = html.replace(/<link[^>]+fonts\.googleapis\.com[^>]*>/g, '');
-      html = html.replace(/<link[^>]+fonts\.gstatic\.com[^>]*>/g, '');
-      // Подставляем системный моно-шрифт вместо DM Mono
-      html = html.replace('</head>', `<style>
-        :root { --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace; }
-        .font-mono { font-family: var(--font-mono) !important; }
-      </style></head>`);
+      // Системный моно-шрифт вместо DM Mono
+      const fallbackStyle = doc.createElement('style');
+      fallbackStyle.textContent = `.font-mono { font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace !important; }`;
+      doc.head.appendChild(fallbackStyle);
 
+      const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
       const blob = new Blob([html], { type: 'text/html' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
