@@ -163,6 +163,62 @@ const BG = "#2A2A2A";
 const CELL_EMPTY = "#363636";
 const CELL_EMPTY_HOVER = "#404040";
 
+function DownloadButton() {
+  const [loading, setLoading] = useState(false);
+
+  const download = async () => {
+    setLoading(true);
+    try {
+      // Получаем текущую страницу
+      const pageUrl = window.location.origin + window.location.pathname;
+      const htmlResp = await fetch(pageUrl);
+      let html = await htmlResp.text();
+
+      // Инлайним все <script src> и <link stylesheet>
+      const scriptMatches = [...html.matchAll(/<script[^>]+src="([^"]+)"[^>]*><\/script>/g)];
+      for (const m of scriptMatches) {
+        const src = m[1];
+        if (src.startsWith('http')) continue;
+        const url = src.startsWith('/') ? window.location.origin + src : pageUrl + src;
+        const resp = await fetch(url);
+        const content = await resp.text();
+        html = html.replace(m[0], `<script>${content}</script>`);
+      }
+
+      const linkMatches = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]*href="([^"]+)"[^>]*\/?>/g)];
+      for (const m of linkMatches) {
+        const href = m[1];
+        if (href.startsWith('http')) continue;
+        const url = href.startsWith('/') ? window.location.origin + href : pageUrl + href;
+        const resp = await fetch(url);
+        const content = await resp.text();
+        html = html.replace(m[0], `<style>${content}</style>`);
+      }
+
+      const blob = new Blob([html], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'colorist-game.html';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={download}
+      disabled={loading}
+      className="px-3 py-1 rounded-sm text-xs font-mono transition-all"
+      style={{ color: loading ? "#333" : "#555" }}
+      title="Скачать игру как HTML-файл"
+    >
+      {loading ? '...' : '↓ html'}
+    </button>
+  );
+}
+
 export default function Index() {
   const [grid, setGrid] = useState<Grid>(emptyGrid());
   const [currentColorId, setCurrentColorId] = useState<number>(randColorId());
@@ -604,7 +660,7 @@ export default function Index() {
       </div>
 
       {/* Nav внизу */}
-      <nav className="flex gap-1 pb-6 pt-4">
+      <nav className="flex gap-1 pb-6 pt-4 items-center">
         {(["game", "scores"] as const).map((v) => (
           <button
             key={v}
@@ -618,6 +674,7 @@ export default function Index() {
             {v === "game" ? "Игра" : "Рекорды"}
           </button>
         ))}
+        <DownloadButton />
       </nav>
 
       {/* Game Over */}
