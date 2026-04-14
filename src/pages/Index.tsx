@@ -18,35 +18,54 @@ function DownloadHtmlButton() {
     setLoading(true);
     try {
       const origin = window.location.origin;
-      const pageUrl = origin + window.location.pathname;
+      const pageUrl = origin + '/';
       const htmlResp = await fetch(pageUrl);
       let html = await htmlResp.text();
 
-      // Инлайним CSS
-      const linkMatches = [...html.matchAll(/<link[^>]+href="([^"]+)"[^>]*>/g)];
+      // Инлайним локальные CSS (не трогаем внешние — fonts.googleapis.com и т.п.)
+      const linkMatches = [...html.matchAll(/<link([^>]+)>/g)];
       for (const m of linkMatches) {
-        if (!m[0].includes('stylesheet')) continue;
-        const href = m[1];
-        if (href.startsWith('http')) continue;
+        const tag = m[0];
+        const hrefMatch = tag.match(/href="([^"]+)"/);
+        if (!hrefMatch) continue;
+        const href = hrefMatch[1];
+        if (href.startsWith('http') || href.startsWith('//')) continue;
+        if (!tag.includes('stylesheet')) continue;
         const url = href.startsWith('/') ? origin + href : pageUrl + href;
         const content = await fetch(url).then(r => r.text());
-        html = html.replace(m[0], `<style>${content}</style>`);
+        html = html.replace(tag, `<style>${content}</style>`);
       }
 
-      // Инлайним JS (включая type=module — убираем его чтобы работало по file://)
-      const scriptMatches = [...html.matchAll(/<script([^>]*)src="([^"]+)"([^>]*)><\/script>/g)];
+      // Инлайним локальные JS
+      const scriptMatches = [...html.matchAll(/<script([^>]*)><\/script>/g)];
       for (const m of scriptMatches) {
-        const src = m[2];
-        if (src.startsWith('http')) continue;
+        const attrs = m[1];
+        const srcMatch = attrs.match(/src="([^"]+)"/);
+        if (!srcMatch) continue;
+        const src = srcMatch[1];
+        if (src.startsWith('http') || src.startsWith('//')) continue;
         const url = src.startsWith('/') ? origin + src : pageUrl + src;
         const content = await fetch(url).then(r => r.text());
-        // Убираем type="module" и crossorigin — они блокируют file://
         html = html.replace(m[0], `<script>${content}</script>`);
       }
 
-      // Убираем оставшиеся modulepreload и prefetch ссылки (не нужны офлайн)
+      // Убираем всё что не работает офлайн:
+      // — скрипты платформы (cdn.poehali.dev, mc.yandex.ru)
+      html = html.replace(/<script[^>]+src="https:\/\/cdn\.poehali\.dev[^"]*"[^>]*><\/script>/g, '');
+      html = html.replace(/<script[^>]+src="https:\/\/mc\.yandex[^"]*"[^>]*><\/script>/g, '');
+      // — блок Яндекс.Метрики (многострочный)
+      html = html.replace(/<!-- Yandex\.Metrika counter -->[\s\S]*?<!-- \/Yandex\.Metrika counter -->/g, '');
+      // — modulepreload / prefetch
       html = html.replace(/<link[^>]+rel="modulepreload"[^>]*>/g, '');
       html = html.replace(/<link[^>]+rel="prefetch"[^>]*>/g, '');
+      // — Google Fonts (заменяем на системный моноширинный шрифт)
+      html = html.replace(/<link[^>]+fonts\.googleapis\.com[^>]*>/g, '');
+      html = html.replace(/<link[^>]+fonts\.gstatic\.com[^>]*>/g, '');
+      // Подставляем системный моно-шрифт вместо DM Mono
+      html = html.replace('</head>', `<style>
+        :root { --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace; }
+        .font-mono { font-family: var(--font-mono) !important; }
+      </style></head>`);
 
       const blob = new Blob([html], { type: 'text/html' });
       const a = document.createElement('a');
@@ -413,13 +432,13 @@ export default function Index() {
               onColumnHover={setHoverCol}
             />
 
-            {/* Ссылка внизу */}
-            <div className="flex items-center gap-4">
+            {/* Ссылка и кнопка сохранения */}
+            <div className="flex flex-col items-center gap-6 w-full pb-2">
               <a
                 href="https://vk.ru/fotoklubpro"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-mono tracking-widest uppercase"
+                className="font-mono tracking-widest uppercase w-full text-center"
                 style={{ fontSize: 15, color: "#777", letterSpacing: "0.1em", textDecoration: "none" }}
               >
                 хочешь научиться фотографировать?
