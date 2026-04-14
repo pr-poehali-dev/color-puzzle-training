@@ -48,8 +48,8 @@ const getTetrad = (id: number): number[] | null =>
 
 const COLS = 5;
 const ROWS = 5;
-const CELL_SIZE = 72;
-const GAP = 5;
+const CELL_SIZE = 62;
+const GAP = 4;
 const BOARD_W = COLS * CELL_SIZE + (COLS - 1) * GAP;
 const BOARD_H = ROWS * CELL_SIZE + (ROWS - 1) * GAP;
 const ANIM_DURATION = 400;
@@ -393,7 +393,7 @@ export default function Index() {
       className="min-h-screen font-sans flex flex-col items-center select-none"
       style={{ backgroundColor: BG }}
     >
-      <div className="w-full max-w-xl px-6 flex-1 flex flex-col items-center">
+      <div className="w-full max-w-xl px-3 flex-1 flex flex-col items-center">
         {view === "game" && (
           <div className="flex flex-col items-center gap-4 w-full pt-1">
 
