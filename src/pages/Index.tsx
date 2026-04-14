@@ -108,11 +108,12 @@ export default function Index() {
   const animFrameRef = useRef<number | null>(null);
   const flyStartRef = useRef<number>(0);
 
+  // Ищем снизу вверх — первую свободную ячейку (квадрат падает и стопорится на первом занятом)
   const findTargetRow = useCallback((col: number, g: Grid): number => {
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = ROWS - 1; r >= 0; r--) {
       if (!g[r][col]) return r;
     }
-    return -1;
+    return -1; // столбец полон
   }, []);
 
   const triggerScoreAnim = (pts: number) => {
