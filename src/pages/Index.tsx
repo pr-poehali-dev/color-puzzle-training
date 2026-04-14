@@ -74,8 +74,9 @@ export default function Index() {
   const animFrameRef = useRef<number | null>(null);
   const flyStartRef = useRef<number>(0);
 
+  // Первая свободная строка сверху (цвет летит снизу вверх и остаётся наверху)
   const findTargetRow = useCallback((col: number, g: Grid): number => {
-    for (let r = ROWS - 1; r >= 0; r--) {
+    for (let r = 0; r < ROWS; r++) {
       if (!g[r][col]) return r;
     }
     return -1;
@@ -92,7 +93,6 @@ export default function Index() {
       const toRemove: [number, number][] = [];
       const directions = [
         [0, 1], [0, -1], [1, 0], [-1, 0],
-        [1, 1], [1, -1], [-1, 1], [-1, -1],
       ];
 
       for (const [dr, dc] of directions) {
@@ -189,8 +189,8 @@ export default function Index() {
 
   const getFlyingY = (ft: FlyingTile) => {
     const p = easeOutCubic(ft.progress);
-    const startY = BOARD_H + CELL_SIZE * 0.5;
-    const endY = ft.targetRow * (CELL_SIZE + GAP);
+    const startY = BOARD_H + CELL_SIZE * 0.5; // ниже поля
+    const endY = ft.targetRow * (CELL_SIZE + GAP); // целевая строка сверху
     return startY + (endY - startY) * p;
   };
 
@@ -201,7 +201,7 @@ export default function Index() {
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans flex flex-col items-center select-none">
+    <div className="min-h-screen font-sans flex flex-col items-center select-none" style={{ backgroundColor: "#E8E8E8" }}>
       {/* Header */}
       <header className="w-full max-w-xl px-6 pt-10 pb-2 flex items-end justify-between">
         <div>
@@ -288,7 +288,7 @@ export default function Index() {
                         height: CELL_SIZE,
                         backgroundColor: cell
                           ? ITTEN_COLORS[cell.colorId].hex
-                          : isHoverCol ? "#EBEBEB" : "#F3F3F3",
+                          : isHoverCol ? "#D0D0D0" : "#DADADA",
                         animation: isPopping
                           ? "pop 0.32s cubic-bezier(0.36,0.07,0.19,0.97) forwards"
                           : undefined,
@@ -315,24 +315,6 @@ export default function Index() {
                 />
               )}
             </div>
-
-            {/* Column buttons */}
-            <div className="flex gap-1" style={{ width: BOARD_W }}>
-              {Array.from({ length: COLS }).map((_, ci) => (
-                <button
-                  key={ci}
-                  onClick={() => handleColumnClick(ci)}
-                  onMouseEnter={() => setHoverCol(ci)}
-                  onMouseLeave={() => setHoverCol(null)}
-                  disabled={!!flyingTile || gameOver}
-                  className="rounded-sm text-sm font-mono text-neutral-300 hover:text-neutral-700 hover:bg-neutral-50 transition-all disabled:pointer-events-none flex items-center justify-center"
-                  style={{ width: CELL_SIZE, height: 30 }}
-                >
-                  ↑
-                </button>
-              ))}
-            </div>
-
 
           </div>
         )}
@@ -425,11 +407,7 @@ export default function Index() {
         </div>
       )}
 
-      <footer className="py-5 text-center">
-        <p className="font-mono text-xs text-neutral-300">
-          тыкните по столбцу · комплементарные пары исчезают
-        </p>
-      </footer>
+      <footer className="py-5" />
     </div>
   );
 }
