@@ -85,18 +85,9 @@ const saveScore = (score: number) => {
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
-// Позиции 8 цветов на круге (в градусах, начиная с верха по часовой)
-// 0=жёлтый, 1=оранжевый, 2=красный, 3=фиолетовый, 4=синий, 5=зелёный, 6=белый, 7=чёрный
-const COLOR_ANGLES: Record<number, number> = {
-  0: 0,    // жёлтый — верх
-  1: 45,   // оранжевый
-  2: 90,   // красный — право
-  3: 135,  // фиолетовый
-  4: 180,  // синий — низ
-  5: 225,  // зелёный
-  6: 270,  // белый — лево
-  7: 315,  // чёрный
-};
+// Только 6 цветов в круге (без белого и чёрного)
+const WHEEL_COLORS = ITTEN_COLORS.filter((c) => c.id <= 5);
+const WHEEL_COUNT = WHEEL_COLORS.length; // 6
 
 function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: number }) {
   const cx = size / 2;
@@ -106,10 +97,10 @@ function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: num
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {ITTEN_COLORS.map((color) => {
-        const angleDeg = COLOR_ANGLES[color.id] - 90; // -90 чтоб 0° был наверху
+      {WHEEL_COLORS.map((color, idx) => {
+        const angleDeg = (360 / WHEEL_COUNT) * idx - 90; // равномерно, верх = 0°
         const rad = (angleDeg * Math.PI) / 180;
-        const segAngle = (2 * Math.PI) / 8;
+        const segAngle = (2 * Math.PI) / WHEEL_COUNT;
         const isLit = litColorIds.has(color.id);
 
         // Сегмент-дуга
