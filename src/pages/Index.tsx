@@ -1,247 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-
-interface Particle {
-  id: number;
-  x: number;
-  y: number;
-  color: string;
-  angle: number;
-  dist: number;
-}
-
-// 12 цветов круга Итена
-// 0=Жёлтый, 1=Жёлто-оранжевый, 2=Оранжевый, 3=Красно-оранжевый,
-// 4=Красный, 5=Красно-фиолетовый, 6=Фиолетовый, 7=Сине-фиолетовый,
-// 8=Синий, 9=Сине-зелёный, 10=Зелёный, 11=Жёлто-зелёный
-// Пары (через 6): 0↔6, 1↔7, 2↔8, 3↔9, 4↔10, 5↔11
-const ITTEN_COLORS = [
-  { id: 0,  name: "Жёлтый",           hex: "#F9E01B" },
-  { id: 1,  name: "Жёлто-оранжевый",  hex: "#FDB827" },
-  { id: 2,  name: "Оранжевый",        hex: "#F7941D" },
-  { id: 3,  name: "Красно-оранжевый", hex: "#F05A23" },
-  { id: 4,  name: "Красный",          hex: "#E8231A" },
-  { id: 5,  name: "Красно-фиолет.",   hex: "#A6195A" },
-  { id: 6,  name: "Фиолетовый",       hex: "#662D91" },
-  { id: 7,  name: "Сине-фиолет.",     hex: "#2E3192" },
-  { id: 8,  name: "Синий",            hex: "#0072BC" },
-  { id: 9,  name: "Сине-зелёный",     hex: "#00A99D" },
-  { id: 10, name: "Зелёный",          hex: "#009444" },
-  { id: 11, name: "Жёлто-зелёный",    hex: "#8DC63F" },
-];
-
-// Триады (через 4): [0,4,8], [1,5,9], [2,6,10], [3,7,11]
-// Тетрады (через 3): [0,3,6,9], [1,4,7,10], [2,5,8,11]
-const TRIADS: number[][] = [
-  [0, 4, 8], [1, 5, 9], [2, 6, 10], [3, 7, 11],
-];
-const TETRADS: number[][] = [
-  [0, 3, 6, 9], [1, 4, 7, 10], [2, 5, 8, 11],
-];
-
-const getComplement = (id: number): number => (id + 6) % 12;
-
-const getTriad = (id: number): number[] | null =>
-  TRIADS.find((t) => t.includes(id)) ?? null;
-
-const getTetrad = (id: number): number[] | null =>
-  TETRADS.find((t) => t.includes(id)) ?? null;
-
-const COLS = 5;
-const ROWS = 5;
-const CELL_SIZE = 62;
-const GAP = 4;
-const BOARD_W = COLS * CELL_SIZE + (COLS - 1) * GAP;
-const BOARD_H = ROWS * CELL_SIZE + (ROWS - 1) * GAP;
-const ANIM_DURATION = 400;
-const STORAGE_KEY = "colorist_scores_v3";
-
-// Уровни: [порог очков, добавляемые id цветов]
-const COLOR_LEVELS: { threshold: number; ids: number[] }[] = [
-  { threshold: 0,  ids: [0, 2, 4, 6, 8, 10] }, // старт: 6 основных
-  { threshold: 10, ids: [1, 7] },               // +2 при 10 очках
-  { threshold: 25, ids: [3, 9] },               // +2 при 25 очках
-  { threshold: 40, ids: [5, 11] },              // +2 при 40 очках
-];
-
-const getActiveColorIds = (score: number): number[] => {
-  const ids: number[] = [];
-  for (const level of COLOR_LEVELS) {
-    if (score >= level.threshold) ids.push(...level.ids);
-  }
-  return ids;
-};
-
-const randColorIdFromActive = (activeIds: number[], exclude?: number) => {
-  const pool = activeIds.length > 1 && exclude !== undefined
-    ? activeIds.filter((id) => id !== exclude)
-    : activeIds;
-  return pool[Math.floor(Math.random() * pool.length)];
-};
-
-type Cell = { colorId: number } | null;
-type Grid = Cell[][];
-
-interface FlyingTile {
-  col: number;
-  colorId: number;
-  targetRow: number;
-  progress: number;
-}
-
-interface ScoreEntry {
-  score: number;
-  date: string;
-}
-
-const emptyGrid = (): Grid =>
-  Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-
-
-const loadScores = (): ScoreEntry[] => {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-};
-
-const getBestScore = (): number => {
-  const s = loadScores();
-  return s.length > 0 ? s[0].score : 0;
-};
-
-const saveScore = (score: number) => {
-  const scores = loadScores();
-  scores.push({ score, date: new Date().toLocaleDateString("ru-RU") });
-  scores.sort((a, b) => b.score - a.score);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(scores.slice(0, 10)));
-};
-
-const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-
-const WHEEL_COUNT = ITTEN_COLORS.length; // 12 (для геометрии колеса)
-
-function ColorWheel({ litColorIds, activeColorIds, size }: { litColorIds: Set<number>; activeColorIds: Set<number>; size: number }) {
-  const cx = size / 2;
-  const cy = size / 2;
-  const R = size / 2 - 4;
-  const r = R * 0.38;
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {ITTEN_COLORS.map((color, idx) => {
-        const angleDeg = (360 / WHEEL_COUNT) * idx - 90;
-        const rad = (angleDeg * Math.PI) / 180;
-        const segAngle = (2 * Math.PI) / WHEEL_COUNT;
-        const isLit = litColorIds.has(color.id);
-        const isActive = activeColorIds.has(color.id);
-        const hasFocus = litColorIds.size > 0;
-        // Неактивные цвета — почти невидимы
-        // Активные: подсвечены если lit, иначе обычные
-        const opacity = !isActive ? 0.07 : hasFocus ? (isLit ? 1 : 0.2) : 0.85;
-
-        // Сегмент-дуга
-        const startRad = rad - segAngle / 2;
-        const endRad = rad + segAngle / 2;
-
-        const x1o = cx + R * Math.cos(startRad);
-        const y1o = cy + R * Math.sin(startRad);
-        const x2o = cx + R * Math.cos(endRad);
-        const y2o = cy + R * Math.sin(endRad);
-        const x1i = cx + r * Math.cos(startRad);
-        const y1i = cy + r * Math.sin(startRad);
-        const x2i = cx + r * Math.cos(endRad);
-        const y2i = cy + r * Math.sin(endRad);
-
-        const d = [
-          `M ${x1i} ${y1i}`,
-          `L ${x1o} ${y1o}`,
-          `A ${R} ${R} 0 0 1 ${x2o} ${y2o}`,
-          `L ${x2i} ${y2i}`,
-          `A ${r} ${r} 0 0 0 ${x1i} ${y1i}`,
-          "Z",
-        ].join(" ");
-
-        return (
-          <path
-            key={color.id}
-            d={d}
-            fill={color.hex}
-            opacity={opacity}
-            stroke={BG}
-            strokeWidth={1.5}
-            style={{
-              transition: "opacity 0.25s ease, filter 0.25s ease",
-              filter: isLit ? `drop-shadow(0 0 10px ${color.hex})` : undefined,
-            }}
-          />
-        );
-      })}
-      {/* Центральное отверстие */}
-      <circle cx={cx} cy={cy} r={r} fill={BG} />
-    </svg>
-  );
-}
-
-const BG = "#2A2A2A";
-const CELL_EMPTY = "#363636";
-const CELL_EMPTY_HOVER = "#404040";
-
-function DownloadButton() {
-  const [loading, setLoading] = useState(false);
-
-  const download = async () => {
-    setLoading(true);
-    try {
-      // Получаем текущую страницу
-      const pageUrl = window.location.origin + window.location.pathname;
-      const htmlResp = await fetch(pageUrl);
-      let html = await htmlResp.text();
-
-      // Инлайним все <script src> и <link stylesheet>
-      const scriptMatches = [...html.matchAll(/<script[^>]+src="([^"]+)"[^>]*><\/script>/g)];
-      for (const m of scriptMatches) {
-        const src = m[1];
-        if (src.startsWith('http')) continue;
-        const url = src.startsWith('/') ? window.location.origin + src : pageUrl + src;
-        const resp = await fetch(url);
-        const content = await resp.text();
-        html = html.replace(m[0], `<script>${content}</script>`);
-      }
-
-      const linkMatches = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]*href="([^"]+)"[^>]*\/?>/g)];
-      for (const m of linkMatches) {
-        const href = m[1];
-        if (href.startsWith('http')) continue;
-        const url = href.startsWith('/') ? window.location.origin + href : pageUrl + href;
-        const resp = await fetch(url);
-        const content = await resp.text();
-        html = html.replace(m[0], `<style>${content}</style>`);
-      }
-
-      const blob = new Blob([html], { type: 'text/html' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'colorist-game.html';
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={download}
-      disabled={loading}
-      className="px-3 py-1 rounded-sm text-xs font-mono transition-all"
-      style={{ color: loading ? "#333" : "#555" }}
-      title="Скачать игру как HTML-файл"
-    >
-      {loading ? '...' : '↓ html'}
-    </button>
-  );
-}
+import ColorWheel from "@/game/ColorWheel";
+import GameBoard from "@/game/GameBoard";
+import { ScoresView, BottomNav, GameOverModal } from "@/game/GameOverlay";
+import {
+  ITTEN_COLORS, COLOR_LEVELS,
+  COLS, ROWS, CELL_SIZE, GAP, BOARD_W, BOARD_H, ANIM_DURATION, BG,
+  Cell, Grid, FlyingTile, Particle, ScoreEntry,
+  getComplement, getTriad, getTetrad,
+  getActiveColorIds, randColorIdFromActive,
+  emptyGrid, loadScores, getBestScore, saveScore, easeOutCubic, pluralScore,
+} from "@/game/constants";
 
 export default function Index() {
   const [grid, setGrid] = useState<Grid>(emptyGrid());
@@ -272,11 +40,9 @@ export default function Index() {
   // Следующий → row 1 (под предыдущим). Стек растёт вниз.
   // Нельзя пролетать сквозь занятые: встаёт на строку НИЖЕ последней занятой сверху.
   const findTargetRow = useCallback((col: number, g: Grid): number => {
-    // Считаем сколько занято подряд сверху
     let top = 0;
     while (top < ROWS && g[top][col] !== null) top++;
-    // top — первая свободная строка сверху
-    if (top >= ROWS) return -1; // столбец полон
+    if (top >= ROWS) return -1;
     return top;
   }, []);
 
@@ -429,7 +195,7 @@ export default function Index() {
 
       animFrameRef.current = requestAnimationFrame(animate);
     },
-    [flyingTile, gameOver, grid, currentColorId, findTargetRow, checkAndPop]
+    [flyingTile, gameOver, grid, currentColorId, findTargetRow, checkAndPop, activeColorIds]
   );
 
   useEffect(() => {
@@ -485,12 +251,6 @@ export default function Index() {
     return startY + (endY - startY) * p;
   };
 
-  const pluralScore = (n: number) => {
-    if (n === 1) return "очко";
-    if (n >= 2 && n <= 4) return "очка";
-    return "очков";
-  };
-
   const currentColor = ITTEN_COLORS[currentColorId];
 
   return (
@@ -508,8 +268,8 @@ export default function Index() {
               const R = wheelSize / 2 - 4;
               const innerR = R * 0.38;
               const sqSize = innerR * 0.85;
-              // Сколько срезает круг в верхних углах — отступ для очков
               const cornerPad = (BOARD_W - wheelSize) / 2 + 6;
+              void cornerPad;
               return (
                 <div className="relative" style={{ width: BOARD_W, height: wheelSize }}>
                   {/* Круг по центру */}
@@ -585,81 +345,16 @@ export default function Index() {
               </div>
             )}
 
-            {/* Board */}
-            <div
-              className="relative overflow-visible"
-              style={{ width: BOARD_W, height: BOARD_H }}
-            >
-              {grid.map((row, ri) =>
-                row.map((cell, ci) => {
-                  const key = `${ri}-${ci}`;
-                  const isPopping = poppingCells.has(key);
-                  const isHoverCol = hoverCol === ci;
-                  const c = cell ? ITTEN_COLORS[cell.colorId] : null;
-                  return (
-                    <div
-                      key={key}
-                      onClick={() => handleColumnClick(ci)}
-                      onMouseEnter={() => setHoverCol(ci)}
-                      onMouseLeave={() => setHoverCol(null)}
-                      className="absolute cursor-pointer rounded-sm"
-                      style={{
-                        left: ci * (CELL_SIZE + GAP),
-                        top: ri * (CELL_SIZE + GAP),
-                        width: CELL_SIZE,
-                        height: CELL_SIZE,
-                        backgroundColor: c ? c.hex : isHoverCol ? CELL_EMPTY_HOVER : CELL_EMPTY,
-                        animation: isPopping
-                          ? "pop 0.32s cubic-bezier(0.36,0.07,0.19,0.97) forwards"
-                          : undefined,
-                        transition: c ? undefined : "background-color 0.1s",
-                      }}
-                    />
-                  );
-                })
-              )}
-
-              {/* Particles */}
-              {particles.map((p) => {
-                const rad = (p.angle * Math.PI) / 180;
-                const tx = Math.sin(rad) * p.dist;
-                const ty = -Math.cos(rad) * p.dist;
-                return (
-                  <div
-                    key={p.id}
-                    className="absolute pointer-events-none rounded-full"
-                    style={{
-                      left: p.x - 5,
-                      top: p.y - 5,
-                      width: 10,
-                      height: 10,
-                      backgroundColor: p.color,
-
-                      animation: "particle-burst 0.5s cubic-bezier(0.2,0.8,0.4,1) forwards",
-                      ["--tx" as string]: `${tx}px`,
-                      ["--ty" as string]: `${ty}px`,
-                      zIndex: 20,
-                    }}
-                  />
-                );
-              })}
-
-              {/* Flying tile */}
-              {flyingTile && (
-                <div
-                  className="absolute rounded-sm pointer-events-none"
-                  style={{
-                    left: flyingTile.col * (CELL_SIZE + GAP),
-                    top: getFlyingY(flyingTile),
-                    width: CELL_SIZE,
-                    height: CELL_SIZE,
-                    backgroundColor: ITTEN_COLORS[flyingTile.colorId].hex,
-                    boxShadow: `0 2px 20px ${ITTEN_COLORS[flyingTile.colorId].hex}77`,
-                    zIndex: 10,
-                  }}
-                />
-              )}
-            </div>
+            <GameBoard
+              grid={grid}
+              flyingTile={flyingTile}
+              particles={particles}
+              poppingCells={poppingCells}
+              hoverCol={hoverCol}
+              getFlyingY={getFlyingY}
+              onColumnClick={handleColumnClick}
+              onColumnHover={setHoverCol}
+            />
 
             {/* Ссылка внизу */}
             <a
@@ -675,99 +370,21 @@ export default function Index() {
         )}
 
         {view === "scores" && (
-          <div className="w-full animate-fade-in pt-10">
-            <h2 className="font-mono text-xs uppercase tracking-widest mb-6" style={{ color: "#555" }}>
-              Таблица рекордов
-            </h2>
-            {scores.length === 0 ? (
-              <p className="font-mono text-sm text-center mt-12" style={{ color: "#555" }}>
-                Пока нет результатов.<br />Сыграйте первую партию!
-              </p>
-            ) : (
-              <div>
-                {scores.map((entry, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-3.5"
-                    style={{ borderBottom: "1px solid #3a3a3a" }}
-                  >
-                    <div className="flex items-center gap-5">
-                      <span className="font-mono text-xs w-4 text-right" style={{ color: "#555" }}>
-                        {i + 1}
-                      </span>
-                      <span className="font-mono text-2xl font-medium text-white">
-                        {entry.score}
-                      </span>
-                      <span className="font-mono text-xs" style={{ color: "#555" }}>
-                        {pluralScore(entry.score)}
-                      </span>
-                    </div>
-                    <span className="font-mono text-xs" style={{ color: "#555" }}>{entry.date}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={() => setView("game")}
-              className="mt-8 px-5 py-2.5 font-mono text-sm rounded-sm transition-colors"
-              style={{ backgroundColor: "#444", color: "#fff" }}
-            >
-              Играть
-            </button>
-          </div>
+          <ScoresView
+            scores={scores}
+            onPlay={() => setView("game")}
+          />
         )}
       </div>
 
-      {/* Nav внизу */}
-      <nav className="flex gap-1 pb-6 pt-4 items-center">
-        {(["game", "scores"] as const).map((v) => (
-          <button
-            key={v}
-            onClick={() => setView(v)}
-            className="px-3 py-1 rounded-sm text-xs font-mono transition-all"
-            style={{
-              backgroundColor: view === v ? "#444" : "transparent",
-              color: view === v ? "#fff" : "#555",
-            }}
-          >
-            {v === "game" ? "Игра" : "Рекорды"}
-          </button>
-        ))}
-        <DownloadButton />
-      </nav>
+      <BottomNav view={view} onSetView={setView} />
 
-      {/* Game Over */}
       {gameOver && (
-        <div
-          className="fixed inset-0 flex flex-col items-center justify-center gap-8 z-50 animate-fade-in"
-          style={{ backgroundColor: "rgba(30,30,30,0.95)", backdropFilter: "blur(8px)" }}
-        >
-          <div className="text-center">
-            <p className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "#666" }}>
-              Поле заполнено
-            </p>
-            <p className="font-mono text-8xl font-medium text-white leading-none">{score}</p>
-            <p className="font-mono text-sm mt-2" style={{ color: "#666" }}>
-              {pluralScore(score)}
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={restartGame}
-              className="px-6 py-3 font-mono text-sm rounded-sm transition-colors text-white"
-              style={{ backgroundColor: "#444" }}
-            >
-              Снова
-            </button>
-            <button
-              onClick={() => { setView("scores"); restartGame(); }}
-              className="px-6 py-3 font-mono text-sm rounded-sm transition-colors"
-              style={{ border: "1px solid #444", color: "#888" }}
-            >
-              Рекорды
-            </button>
-          </div>
-        </div>
+        <GameOverModal
+          score={score}
+          onRestart={restartGame}
+          onScores={() => { setView("scores"); restartGame(); }}
+        />
       )}
 
       <style>{`
