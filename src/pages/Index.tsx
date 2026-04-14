@@ -99,7 +99,7 @@ const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
 const WHEEL_COUNT = ITTEN_COLORS.length; // 12
 
-function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: number }) {
+function ColorWheel({ litColorIds, size, activeId }: { litColorIds: Set<number>; size: number; activeId?: number }) {
   const cx = size / 2;
   const cy = size / 2;
   const R = size / 2 - 4;
@@ -112,6 +112,7 @@ function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: num
         const rad = (angleDeg * Math.PI) / 180;
         const segAngle = (2 * Math.PI) / WHEEL_COUNT;
         const isLit = litColorIds.has(color.id);
+        const isActive = color.id === activeId;
 
         // Сегмент-дуга
         const startRad = rad - segAngle / 2;
@@ -140,12 +141,16 @@ function ColorWheel({ litColorIds, size }: { litColorIds: Set<number>; size: num
             key={color.id}
             d={d}
             fill={color.hex}
-            opacity={isLit ? 1 : 0.55}
+            opacity={isLit ? 1 : isActive ? 1 : 0.55}
             stroke={BG}
             strokeWidth={1.5}
             style={{
               transition: "opacity 0.3s ease, filter 0.3s ease",
-              filter: isLit ? `drop-shadow(0 0 8px ${color.hex})` : undefined,
+              filter: isLit
+                ? `drop-shadow(0 0 8px ${color.hex})`
+                : isActive
+                ? `drop-shadow(0 0 5px ${color.hex}aa)`
+                : undefined,
             }}
           />
         );
@@ -397,23 +402,30 @@ export default function Index() {
             {/* HUD */}
             <div className="flex items-center w-full" style={{ maxWidth: BOARD_W, gap: 12 }}>
               {/* Цветовой круг с квадратом в центре */}
-              <div className="relative flex-shrink-0" style={{ width: BOARD_W * 0.62, height: BOARD_W * 0.62 }}>
-                <ColorWheel litColorIds={litColorIds} size={BOARD_W * 0.62} />
-                {/* Квадрат следующего цвета — в центре круга */}
-                <div
-                  className="absolute rounded-sm"
-                  style={{
-                    width: CELL_SIZE * 0.9,
-                    height: CELL_SIZE * 0.9,
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    backgroundColor: currentColor.hex,
-                    transition: "background-color 0.25s ease, box-shadow 0.25s",
-                    boxShadow: `0 4px 24px ${currentColor.hex}88`,
-                  }}
-                />
-              </div>
+              {(() => {
+                const wheelSize = BOARD_W * 0.82;
+                const R = wheelSize / 2 - 4;
+                const innerR = R * 0.38;
+                const sqSize = innerR * 0.9;
+                return (
+                  <div className="relative flex-shrink-0" style={{ width: wheelSize, height: wheelSize }}>
+                    <ColorWheel litColorIds={litColorIds} size={wheelSize} activeId={currentColorId} />
+                    <div
+                      className="absolute rounded-sm"
+                      style={{
+                        width: sqSize,
+                        height: sqSize,
+                        top: "50%",
+                        left: "50%",
+                        transform: "translate(-50%, -50%)",
+                        backgroundColor: currentColor.hex,
+                        transition: "background-color 0.25s ease, box-shadow 0.25s",
+                        boxShadow: `0 2px 16px ${currentColor.hex}99`,
+                      }}
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Очки и рекорд справа — вертикально */}
               <div className="flex flex-col gap-5 items-start" style={{ flex: 1 }}>
