@@ -108,18 +108,17 @@ export default function Index() {
   const animFrameRef = useRef<number | null>(null);
   const flyStartRef = useRef<number>(0);
 
-  // Летит снизу вверх, останавливается прямо перед первым занятым сверху.
-  // Если столбец пуст — встаёт на самое дно (ROWS-1).
+  // Квадрат летит снизу вверх.
+  // Первый в пустом столбце → row 0 (верх).
+  // Следующий → row 1 (под предыдущим). Стек растёт вниз.
+  // Нельзя пролетать сквозь занятые: встаёт на строку НИЖЕ последней занятой сверху.
   const findTargetRow = useCallback((col: number, g: Grid): number => {
-    // Ищем первую занятую сверху
-    for (let r = 0; r < ROWS; r++) {
-      if (g[r][col] !== null) {
-        // Встаём на строку выше неё
-        return r - 1; // -1 означает столбец полон (занята row 0)
-      }
-    }
-    // Столбец пуст — дно
-    return ROWS - 1;
+    // Считаем сколько занято подряд сверху
+    let top = 0;
+    while (top < ROWS && g[top][col] !== null) top++;
+    // top — первая свободная строка сверху
+    if (top >= ROWS) return -1; // столбец полон
+    return top;
   }, []);
 
   const triggerScoreAnim = (pts: number) => {
